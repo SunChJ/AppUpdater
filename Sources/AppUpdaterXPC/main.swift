@@ -76,7 +76,7 @@ class XPCService: NSObject, UpdaterServiceProtocol, UpdaterProgressProtocol {
     
     func installUpdate(fromPath path: String, toPath destinationPath: String, reply: @escaping (Bool, String?) -> Void) {
         guard let helper = connectToHelper() else {
-            reply(false, "Failed to connect to helper", nil)
+            reply(false, "Failed to connect to helper")
             return
         }
         

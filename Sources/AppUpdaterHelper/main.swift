@@ -233,7 +233,11 @@ class HelperDelegate: NSObject, NSXPCListenerDelegate {
 
 // 主入口点
 let delegate = HelperDelegate()
-let listener = NSXPCListener.machService()
+// 获取主应用的 Bundle ID
+let mainAppBundleID = Bundle.main.bundleIdentifier ?? ""
+let helperID = mainAppBundleID.isEmpty ? "com.yourdomain.appupdater.helper" : "\(mainAppBundleID).helper"
+
+let listener = NSXPCListener(machServiceName: helperID)
 listener.delegate = delegate
 listener.resume()
 
