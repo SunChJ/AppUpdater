@@ -166,16 +166,15 @@ public class HelperInstaller {
         if !result {
             var errorMessage = "Failed to bless helper"
             
-            if let error = cfError?.takeRetainedValue() {
-                let nsError = error as NSError
-                errorMessage = "Failed to bless helper: \(nsError.localizedDescription)"
+            if let cfError = cfError {
+              errorMessage = "Failed to bless helper: \(cfError)"
                 
-                // 添加更多详细信息
-                if let reasons = nsError.userInfo["BlessErrorReasons"] as? [String] {
-                    errorMessage += "\nReasons: \(reasons.joined(separator: ", "))"
-                } else {
-                    errorMessage += "\nCan't find or decode reasons"
-                }
+//                // 添加更多详细信息
+//                if let reasons = nsError.userInfo["BlessErrorReasons"] as? [String] {
+//                    errorMessage += "\nReasons: \(reasons.joined(separator: ", "))"
+//                } else {
+//                    errorMessage += "\nCan't find or decode reasons"
+//                }
                 
                 // 检查帮助工具的代码签名
                 let task = Process()
