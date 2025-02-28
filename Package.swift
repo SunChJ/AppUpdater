@@ -26,6 +26,22 @@ let package = Package(
                 "Version",
                 .product(name: "Path", package: "Path.swift"),
                 .product(name: "MarkdownUI", package: "swift-markdown-ui"),
+            ],
+            resources: [
+                .process("Resources")
             ]),
+        // 这些目标不会被直接构建，但它们的源代码会被包含在包中
+        .target(
+            name: "AppUpdaterHelper",
+            dependencies: ["AppUpdaterShared"],
+            path: "Sources/AppUpdaterHelper"),
+        .target(
+            name: "AppUpdaterXPC",
+            dependencies: ["AppUpdaterShared"],
+            path: "Sources/AppUpdaterXPC"),
+        .target(
+            name: "AppUpdaterShared",
+            dependencies: [],
+            path: "Sources/AppUpdaterShared")
     ]
 )

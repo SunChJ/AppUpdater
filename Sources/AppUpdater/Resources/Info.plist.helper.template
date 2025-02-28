@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>{{BUNDLE_ID}}.helper</string>
+    <key>CFBundleName</key>
+    <string>{{APP_NAME}} Updater Helper</string>
+    <key>CFBundleVersion</key>
+    <string>{{VERSION}}</string>
+    <key>CFBundleShortVersionString</key>
+    <string>{{VERSION}}</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>SMAuthorizedClients</key>
+    <array>
+        <string>identifier "{{BUNDLE_ID}}" and anchor apple generic and certificate leaf[subject.CN] = "{{DEVELOPER_NAME}}" and certificate 1[field.1.2.840.113635.100.6.2.1] /* exists */</string>
+    </array>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © {{YEAR}}. All rights reserved.</string>
+</dict>
+</plist>
