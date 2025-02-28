@@ -26,6 +26,19 @@ public class HelperInstaller {
     }
     
     public func installHelper(completion: @escaping (Bool, String?) -> Void) {
+        // 获取帮助工具源代码路径
+        guard let helperSourcePath = getHelperSourcePath() else {
+            let errorMessage = "Helper source not found. Searched in: \(Bundle.module.bundlePath), \(Bundle.module.bundleURL.deletingLastPathComponent().deletingLastPathComponent().path), and \(FileManager.default.currentDirectoryPath)"
+            completion(false, errorMessage)
+            return
+        }
+        
+        // 获取共享源代码路径
+        guard let sharedSourcePath = getSharedSourcePath() else {
+            completion(false, "Shared source not found")
+            return
+        }
+        
         // 1. 构建帮助工具
         buildHelper { [weak self] success, helperPath, error in
             guard let self = self, success, let helperPath = helperPath else {
@@ -42,7 +55,7 @@ public class HelperInstaller {
     
     private func buildHelper(completion: @escaping (Bool, URL?, String?) -> Void) {
         // 从包资源中提取帮助工具源代码
-        guard let helperSourceURL = Bundle.module.url(forResource: "AppUpdaterHelper", withExtension: nil) else {
+        guard let helperSourceURL = getHelperSourcePath() else {
             completion(false, nil, "Helper source not found")
             return
         }
@@ -243,7 +256,7 @@ public class HelperInstaller {
     
     private func buildXPC(completion: @escaping (Bool, URL?, String?) -> Void) {
         // 从包资源中提取 XPC 服务源代码
-        guard let xpcSourceURL = Bundle.module.url(forResource: "AppUpdaterXPC", withExtension: nil) else {
+        guard let xpcSourceURL = getXPCSourcePath() else {
             completion(false, nil, "XPC service source not found")
             return
         }
@@ -559,5 +572,104 @@ public class HelperInstaller {
                 completion(false, error.localizedDescription)
             }
         }
+    }
+    
+    private func getHelperSourcePath() -> URL? {
+        // 首先尝试从包资源中获取
+        if let resourceURL = Bundle.module.url(forResource: "AppUpdaterHelper", withExtension: nil) {
+            return resourceURL
+        }
+        
+        // 如果包资源中没有，尝试从包目录中获取
+        let packageURL = Bundle.module.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
+        let sourcePath = packageURL.appendingPathComponent("Sources/AppUpdaterHelper")
+        
+        if FileManager.default.fileExists(atPath: sourcePath.path) {
+            return sourcePath
+        }
+        
+        // 最后尝试从当前目录获取
+        let currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let currentSourcePath = currentDirectoryURL.appendingPathComponent("Sources/AppUpdaterHelper")
+        
+        if FileManager.default.fileExists(atPath: currentSourcePath.path) {
+            return currentSourcePath
+        }
+        
+        return nil
+    }
+    
+    private func getXPCSourcePath() -> URL? {
+        // 首先尝试从包资源中获取
+        if let resourceURL = Bundle.module.url(forResource: "AppUpdaterXPC", withExtension: nil) {
+            return resourceURL
+        }
+        
+        // 如果包资源中没有，尝试从包目录中获取
+        let packageURL = Bundle.module.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
+        let sourcePath = packageURL.appendingPathComponent("Sources/AppUpdaterXPC")
+        
+        if FileManager.default.fileExists(atPath: sourcePath.path) {
+            return sourcePath
+        }
+        
+        // 最后尝试从当前目录获取
+        let currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let currentSourcePath = currentDirectoryURL.appendingPathComponent("Sources/AppUpdaterXPC")
+        
+        if FileManager.default.fileExists(atPath: currentSourcePath.path) {
+            return currentSourcePath
+        }
+        
+        return nil
+    }
+    
+    private func getSharedSourcePath() -> URL? {
+        // 首先尝试从包资源中获取
+        if let resourceURL = Bundle.module.url(forResource: "AppUpdaterShared", withExtension: nil) {
+            return resourceURL
+        }
+        
+        // 如果包资源中没有，尝试从包目录中获取
+        let packageURL = Bundle.module.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
+        let sourcePath = packageURL.appendingPathComponent("Sources/AppUpdaterShared")
+        
+        if FileManager.default.fileExists(atPath: sourcePath.path) {
+            return sourcePath
+        }
+        
+        // 最后尝试从当前目录获取
+        let currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let currentSourcePath = currentDirectoryURL.appendingPathComponent("Sources/AppUpdaterShared")
+        
+        if FileManager.default.fileExists(atPath: currentSourcePath.path) {
+            return currentSourcePath
+        }
+        
+        return nil
+    }
+    
+    public func debugResourcePaths() -> String {
+        var debug = "Bundle.module.bundlePath: \(Bundle.module.bundlePath)\n"
+        debug += "Bundle.module.resourcePath: \(Bundle.module.resourcePath ?? "nil")\n"
+        
+        debug += "Resources in bundle:\n"
+        if let resourcePath = Bundle.module.resourcePath,
+           let resources = try? FileManager.default.contentsOfDirectory(atPath: resourcePath) {
+            for resource in resources {
+                debug += "- \(resource)\n"
+            }
+        } else {
+            debug += "- Could not list resources\n"
+        }
+        
+        debug += "\nPackage directory: \(Bundle.module.bundleURL.deletingLastPathComponent().deletingLastPathComponent().path)\n"
+        debug += "Current directory: \(FileManager.default.currentDirectoryPath)\n"
+        
+        debug += "\nHelper source path: \(getHelperSourcePath()?.path ?? "nil")\n"
+        debug += "XPC source path: \(getXPCSourcePath()?.path ?? "nil")\n"
+        debug += "Shared source path: \(getSharedSourcePath()?.path ?? "nil")\n"
+        
+        return debug
     }
 } 
