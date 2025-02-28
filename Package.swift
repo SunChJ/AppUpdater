@@ -32,10 +32,7 @@ let package = Package(
                 "AppUpdaterShared"
             ],
             resources: [
-                .process("Resources"),
-                .copy("../AppUpdaterHelper"),
-                .copy("../AppUpdaterXPC"),
-                .copy("../AppUpdaterShared")
+                .process("Resources")
             ]),
         .executableTarget(
             name: "AppUpdaterHelper",
