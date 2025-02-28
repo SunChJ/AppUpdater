@@ -39,24 +39,41 @@ public class HelperInstaller {
             return
         }
         
-        // 1. 构建帮助工具
-        buildHelper { [weak self] success, helperPath, error in
-            guard let self = self, success, let helperPath = helperPath else {
-                completion(false, error ?? "Failed to build helper")
+        // 创建临时目录
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
+        do {
+            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true, attributes: nil)
+        } catch {
+            completion(false, "Failed to create temporary directory: \(error.localizedDescription)")
+            return
+        }
+        
+        // 构建帮助工具
+        buildHelper(sourcePath: helperSourcePath, sharedSourcePath: sharedSourcePath, outputDir: tempDir) { success, error, helperURL in
+            if !success || helperURL == nil {
+                completion(false, "Failed to build helper: \(error ?? "Unknown error")")
                 return
             }
             
-            // 2. 安装帮助工具
-            self.installBuiltHelper(at: helperPath) { success, error in
+            guard let helperURL = helperURL else {
+                completion(false, "Helper URL is nil")
+                return
+            }
+            
+            // 安装帮助工具
+            self.installBuiltHelper(helperURL: helperURL) { success, error in
+                // 清理临时目录
+                try? FileManager.default.removeItem(at: tempDir)
+                
                 completion(success, error)
             }
         }
     }
     
-    private func buildHelper(completion: @escaping (Bool, URL?, String?) -> Void) {
+    private func buildHelper(sourcePath: URL, sharedSourcePath: URL, outputDir: URL, completion: @escaping (Bool, String?, URL?) -> Void) {
         // 从包资源中提取帮助工具源代码
         guard let helperSourceURL = getHelperSourcePath() else {
-            completion(false, nil, "Helper source not found")
+            completion(false, "Helper source not found", nil)
             return
         }
         
@@ -100,143 +117,93 @@ public class HelperInstaller {
             if process.terminationStatus == 0 {
                 // 构建成功
                 let helperPath = tempDir.appendingPathComponent(".build/release/AppUpdaterHelper")
-                completion(true, helperPath, nil)
+                completion(true, nil, helperPath)
             } else {
-                completion(false, nil, "Build failed with status \(process.terminationStatus)")
+                completion(false, "Build failed with status \(process.terminationStatus)", nil)
             }
         } catch {
-            completion(false, nil, error.localizedDescription)
+            completion(false, error.localizedDescription, nil)
         }
     }
     
-    private func installBuiltHelper(at helperPath: URL, completion: @escaping (Bool, String?) -> Void) {
-        var authRef: AuthorizationRef?
-        let status = AuthorizationCreate(nil, nil, [], &authRef)
+    private func installBuiltHelper(helperURL: URL, completion: @escaping (Bool, String?) -> Void) {
+        // 获取主应用的 Bundle ID
+        let bundleID = Bundle.main.bundleIdentifier ?? ""
+        let helperID = bundleID.isEmpty ? "com.yourdomain.appupdater.helper" : "\(bundleID).helper"
         
-        guard status == errAuthorizationSuccess, let auth = authRef else {
-            completion(false, "Failed to create authorization: \(status)")
+        // 创建授权引用
+        var authRef: AuthorizationRef?
+        var authStatus = AuthorizationCreate(nil, nil, AuthorizationFlags(), &authRef)
+        
+        guard authStatus == errAuthorizationSuccess else {
+            completion(false, "Failed to create authorization: \(authStatus)")
             return
         }
         
         defer {
-            AuthorizationFree(auth, [])
+            if let authRef = authRef {
+                AuthorizationFree(authRef, AuthorizationFlags())
+            }
         }
         
-        // 获取管理员权限
-        var authItem = AuthorizationItem(name: kSMRightBlessPrivilegedHelper, valueLength: 0, value: nil, flags: 0)
-        var authRights = AuthorizationRights(count: 1, items: &authItem)
+        // 获取授权
+        let authItem = AuthorizationItem(name: kSMRightBlessPrivilegedHelper, valueLength: 0, value: nil, flags: 0)
+        var authItems = [authItem]
+        var authRights = AuthorizationRights(count: 1, items: &authItems)
         let flags: AuthorizationFlags = [.interactionAllowed, .extendRights, .preAuthorize]
         
-        let authStatus = AuthorizationCreate(&authRights, nil, flags, &authRef)
+        authStatus = AuthorizationCreate(&authRights, nil, flags, &authRef)
+        
         guard authStatus == errAuthorizationSuccess else {
-            completion(false, "Authorization failed: \(authStatus)")
+            completion(false, "Failed to get authorization: \(authStatus)")
             return
         }
         
-        // 准备 launchd.plist
-        guard let launchdTemplate = Bundle.module.url(forResource: "launchd.plist", withExtension: "template"),
-              let launchdData = try? Data(contentsOf: launchdTemplate),
-              var launchdContent = String(data: launchdData, encoding: .utf8) else {
-            completion(false, "Failed to load launchd.plist template")
+        // 安装帮助工具
+        var cfError: Unmanaged<CFError>?
+        let result = SMJobBless(kSMDomainSystemLaunchd, helperID as CFString, authRef, &cfError)
+        
+        if !result {
+            var errorMessage = "Failed to bless helper"
+            
+            if let error = cfError?.takeRetainedValue() {
+                let nsError = error as NSError
+                errorMessage = "Failed to bless helper: \(nsError.localizedDescription)"
+                
+                // 添加更多详细信息
+                if let reasons = nsError.userInfo["BlessErrorReasons"] as? [String] {
+                    errorMessage += "\nReasons: \(reasons.joined(separator: ", "))"
+                } else {
+                    errorMessage += "\nCan't find or decode reasons"
+                }
+                
+                // 检查帮助工具的代码签名
+                let task = Process()
+                task.launchPath = "/usr/bin/codesign"
+                task.arguments = ["-vv", "-d", helperURL.path]
+                
+                let pipe = Pipe()
+                task.standardOutput = pipe
+                task.standardError = pipe
+                
+                do {
+                    try task.run()
+                    task.waitUntilExit()
+                    
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    if let output = String(data: data, encoding: .utf8) {
+                        errorMessage += "\nCode signing info: \(output)"
+                    }
+                } catch {
+                    errorMessage += "\nFailed to check code signing: \(error.localizedDescription)"
+                }
+            }
+            
+            completion(false, errorMessage)
             return
         }
         
-        launchdContent = launchdContent.replacingOccurrences(of: "{{HELPER_ID}}", with: helperID)
-        
-        let launchdURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("\(helperID).plist")
-        do {
-            try launchdContent.write(to: launchdURL, atomically: true, encoding: .utf8)
-            
-            // 复制帮助工具到目标位置
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
-            process.arguments = [
-                "cp",
-                helperPath.path,
-                helperURL.path
-            ]
-            
-            try process.run()
-            process.waitUntilExit()
-            
-            if process.terminationStatus != 0 {
-                completion(false, "Failed to copy helper")
-                return
-            }
-            
-            // 设置权限
-            let chmodProcess = Process()
-            chmodProcess.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
-            chmodProcess.arguments = [
-                "chmod",
-                "744",  // rwxr--r--
-                helperURL.path
-            ]
-            
-            try chmodProcess.run()
-            chmodProcess.waitUntilExit()
-            
-            if chmodProcess.terminationStatus != 0 {
-                completion(false, "Failed to set permissions")
-                return
-            }
-            
-            // 复制 launchd.plist
-            let launchdDestURL = URL(fileURLWithPath: "/Library/LaunchDaemons/\(helperID).plist")
-            let copyProcess = Process()
-            copyProcess.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
-            copyProcess.arguments = [
-                "cp",
-                launchdURL.path,
-                launchdDestURL.path
-            ]
-            
-            try copyProcess.run()
-            copyProcess.waitUntilExit()
-            
-            if copyProcess.terminationStatus != 0 {
-                completion(false, "Failed to copy launchd.plist")
-                return
-            }
-            
-            // 设置 launchd.plist 权限
-            let chownProcess = Process()
-            chownProcess.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
-            chownProcess.arguments = [
-                "chown",
-                "root:wheel",
-                launchdDestURL.path
-            ]
-            
-            try chownProcess.run()
-            chownProcess.waitUntilExit()
-            
-            if chownProcess.terminationStatus != 0 {
-                completion(false, "Failed to set launchd.plist ownership")
-                return
-            }
-            
-            // 加载 launchd 服务
-            let loadProcess = Process()
-            loadProcess.executableURL = URL(fileURLWithPath: "/usr/bin/sudo")
-            loadProcess.arguments = [
-                "launchctl",
-                "load",
-                launchdDestURL.path
-            ]
-            
-            try loadProcess.run()
-            loadProcess.waitUntilExit()
-            
-            if loadProcess.terminationStatus != 0 {
-                completion(false, "Failed to load launchd service")
-                return
-            }
-            
-            completion(true, nil)
-        } catch {
-            completion(false, error.localizedDescription)
-        }
+        completion(true, nil)
     }
     
     public func buildAndInstallXPC(completion: @escaping (Bool, String?) -> Void) {
@@ -671,5 +638,82 @@ public class HelperInstaller {
         debug += "Shared source path: \(getSharedSourcePath()?.path ?? "nil")\n"
         
         return debug
+    }
+    
+    public func checkCodeSigning() -> String {
+        var result = "Code Signing Information:\n"
+        
+        // 检查主应用的代码签名
+        let mainBundle = Bundle.main
+        let mainBundlePath = mainBundle.bundlePath
+        
+        result += "\nMain Application (\(mainBundlePath)):\n"
+        result += runCommand("/usr/bin/codesign", arguments: ["-vv", "-d", mainBundlePath])
+        
+        // 获取开发者 ID
+        let task = Process()
+        task.launchPath = "/usr/bin/codesign"
+        task.arguments = ["-dvv", mainBundlePath]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                // 解析输出以获取开发者 ID
+                if let range = output.range(of: "Authority=Developer ID Application: ") {
+                    let start = range.upperBound
+                    if let end = output[start...].range(of: " (")?.lowerBound {
+                        let developerID = String(output[start..<end])
+                        result += "\nDeveloper ID: \(developerID)\n"
+                    }
+                }
+            }
+        } catch {
+            result += "\nFailed to get developer ID: \(error.localizedDescription)\n"
+        }
+        
+        // 检查帮助工具的代码签名（如果已安装）
+        if isHelperInstalled() {
+            result += "\nHelper Tool (\(helperURL.path)):\n"
+            result += runCommand("/usr/bin/codesign", arguments: ["-vv", "-d", helperURL.path])
+        } else {
+            result += "\nHelper Tool: Not installed\n"
+        }
+        
+        // 检查 XPC 服务的代码签名（如果已安装）
+        if isXPCInstalled() {
+            result += "\nXPC Service (\(xpcURL.path)):\n"
+            result += runCommand("/usr/bin/codesign", arguments: ["-vv", "-d", xpcURL.path])
+        } else {
+            result += "\nXPC Service: Not installed\n"
+        }
+        
+        return result
+    }
+    
+    private func runCommand(_ command: String, arguments: [String]) -> String {
+        let task = Process()
+        task.launchPath = command
+        task.arguments = arguments
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            return String(data: data, encoding: .utf8) ?? "No output"
+        } catch {
+            return "Error running command: \(error.localizedDescription)"
+        }
     }
 } 
