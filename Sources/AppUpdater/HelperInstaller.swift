@@ -1,8 +1,8 @@
 import Foundation
 import ServiceManagement
 
-class HelperInstaller {
-    static let shared = HelperInstaller()
+public class HelperInstaller {
+    public static let shared = HelperInstaller()
     
     private let helperID: String
     private let helperURL: URL
@@ -17,15 +17,15 @@ class HelperInstaller {
         xpcURL = Bundle.main.bundleURL.appendingPathComponent("Contents/XPCServices/\(xpcID).xpc")
     }
     
-    func isHelperInstalled() -> Bool {
+    public func isHelperInstalled() -> Bool {
         return FileManager.default.fileExists(atPath: helperURL.path)
     }
     
-    func isXPCInstalled() -> Bool {
+    public func isXPCInstalled() -> Bool {
         return FileManager.default.fileExists(atPath: xpcURL.path)
     }
     
-    func installHelper(completion: @escaping (Bool, String?) -> Void) {
+    public func installHelper(completion: @escaping (Bool, String?) -> Void) {
         // 1. 构建帮助工具
         buildHelper { [weak self] success, helperPath, error in
             guard let self = self, success, let helperPath = helperPath else {
@@ -226,7 +226,7 @@ class HelperInstaller {
         }
     }
     
-    func buildAndInstallXPC(completion: @escaping (Bool, String?) -> Void) {
+    public func buildAndInstallXPC(completion: @escaping (Bool, String?) -> Void) {
         // 1. 构建 XPC 服务
         buildXPC { [weak self] success, xpcPath, error in
             guard let self = self, success, let xpcPath = xpcPath else {
@@ -511,7 +511,7 @@ class HelperInstaller {
     }
     
     // 辅助方法：卸载帮助工具
-    func uninstallHelper(completion: @escaping (Bool, String?) -> Void) {
+    public func uninstallHelper(completion: @escaping (Bool, String?) -> Void) {
         // 先停止帮助工具
         stopHelper { [weak self] success, error in
             guard let self = self else { return }
