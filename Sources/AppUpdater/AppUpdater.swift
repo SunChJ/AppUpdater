@@ -155,7 +155,7 @@ public class AppUpdater: ObservableObject {
           #if DEBUG
           if forceDeveloperIDInDebug {
             let isDeveloperID2 = csi2?.contains("Developer ID") ?? false
-            aulog("Debug mode: Checking for Developer ID - Current:", isDeveloperID1, "Downloaded:", isDeveloperID2)
+            aulog("Debug mode: Checking for Developer ID - Current:", "Downloaded:", isDeveloperID2)
             return isDeveloperID2
           }
           #endif
