@@ -52,6 +52,9 @@ public class AppUpdater: ObservableObject {
     return URLSession(configuration: config)
   }()
   
+  /// 在调试模式下是否强制使用 Developer ID 证书
+  public var forceDeveloperIDInDebug = true
+  
   public init(owner: String, repo: String, releasePrefix: String? = nil, interval: TimeInterval = 24 * 60 * 60, proxy: URLRequestProxy? = nil) {
     self.owner = owner
     self.repo = repo
@@ -129,6 +132,7 @@ public class AppUpdater: ObservableObject {
     func validate(codeSigning b1: Bundle, _ b2: Bundle) async throws -> Bool {
       do {
         aulog("Validating code signing...")
+        
         // 检查当前应用是否签名
         let currentSigned = await b1.isCodeSigned()
         aulog("Current app signed:", currentSigned)
@@ -146,6 +150,16 @@ public class AppUpdater: ObservableObject {
             aulog("Error: Failed to get code signing identity")
             throw Error.codeSigningIdentity
           }
+          
+          // 在调试模式下，如果设置了强制使用 Developer ID，则只检查是否包含 Developer ID
+          #if DEBUG
+          if forceDeveloperIDInDebug {
+            let isDeveloperID2 = csi2?.contains("Developer ID") ?? false
+            aulog("Debug mode: Checking for Developer ID - Current:", isDeveloperID1, "Downloaded:", isDeveloperID2)
+            return isDeveloperID2
+          }
+          #endif
+          
           aulog("Comparing signing identities - Current:", csi1, "Downloaded:", csi2)
           return csi1 == csi2
         }
