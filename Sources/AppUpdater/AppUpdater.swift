@@ -262,27 +262,29 @@ public class AppUpdater: ObservableObject {
     
     // 创建临时备份目录
     let backupDir = try FileManager.default.url(for: .itemReplacementDirectory,
-                                                in: .userDomainMask,
-                                                appropriateFor: installedAppBundle.bundleURL,
-                                                create: true)
+                                              in: .userDomainMask,
+                                              appropriateFor: installedAppBundle.bundleURL,
+                                              create: true)
     let backupPath = backupDir.appendingPathComponent("\(installedAppBundle.bundleIdentifier ?? "app")-backup.app")
+    
     do {
       aulog("Creating backup at:", backupPath)
       // 备份当前应用
-      
       if installedAppBundle.path.exists {
-        try FileManager.default
-          .copyItem(
-            atPath: installedAppBundle.path.string,
-            toPath: backupPath.absoluteString
-          )
+        try FileManager.default.copyItem(
+          at: installedAppBundle.bundleURL,
+          to: backupPath
+        )
         aulog("Backup created successfully")
       }
       
       aulog("Replacing application...")
       // 删除旧应用并移动新应用
-      try installedAppBundle.path.delete()
-      try downloadedAppBundle.path.move(to: installedAppBundle.path)
+      try? FileManager.default.removeItem(at: installedAppBundle.bundleURL)
+      try FileManager.default.moveItem(
+        at: downloadedAppBundle.bundleURL,
+        to: installedAppBundle.bundleURL
+      )
       aulog("Application replaced successfully")
       
       // 验证新应用是否完整
@@ -322,14 +324,12 @@ public class AppUpdater: ObservableObject {
     } catch {
       aulog("Error during installation:", error)
       // 发生错误时恢复备份
-      if FileManager.default.fileExists(atPath: backupPath.absoluteString) {
-        try? FileManager.default
-          .removeItem(at: installedAppBundle.bundleURL)
-        _ = try? FileManager.default
-          .moveItem(
-            atPath: backupPath.absoluteString,
-            toPath: installedAppBundle.bundleURL.absoluteString
-          )
+      if FileManager.default.fileExists(atPath: backupPath.path) {
+        try? FileManager.default.removeItem(at: installedAppBundle.bundleURL)
+        try? FileManager.default.moveItem(
+          at: backupPath,
+          to: installedAppBundle.bundleURL
+        )
       }
       throw error
     }
