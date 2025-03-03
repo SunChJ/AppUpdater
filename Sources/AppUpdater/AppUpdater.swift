@@ -266,12 +266,16 @@ public class AppUpdater: ObservableObject {
                                                 appropriateFor: installedAppBundle.bundleURL,
                                                 create: true)
     let backupPath = backupDir.appendingPathComponent("\(installedAppBundle.bundleIdentifier ?? "app")-backup.app")
-    
     do {
       aulog("Creating backup at:", backupPath)
       // 备份当前应用
+      
       if installedAppBundle.path.exists {
-        try installedAppBundle.path.copy(to: backupPath, overwrite: true)
+        try FileManager.default
+          .copyItem(
+            atPath: installedAppBundle.path.string,
+            toPath: backupPath.absoluteString
+          )
         aulog("Backup created successfully")
       }
       
@@ -313,14 +317,19 @@ public class AppUpdater: ObservableObject {
       }
       
       aulog("Cleaning up backup")
-      try? backupPath.delete()
+      try? FileManager.default.removeItem(at: backupPath)
       
     } catch {
       aulog("Error during installation:", error)
       // 发生错误时恢复备份
-      if backupPath.exists {
-        try? installedAppBundle.path.delete()
-        _ = try? backupPath.move(to: installedAppBundle.bundleURL)
+      if FileManager.default.fileExists(atPath: backupPath.absoluteString) {
+        try? FileManager.default
+          .removeItem(at: installedAppBundle.bundleURL)
+        _ = try? FileManager.default
+          .moveItem(
+            atPath: backupPath.absoluteString,
+            toPath: installedAppBundle.bundleURL.absoluteString
+          )
       }
       throw error
     }
@@ -336,13 +345,6 @@ public class AppUpdater: ObservableObject {
     Task { @MainActor in
       self.releases = releases
     }
-  }
-}
-
-extension URL: @retroactive Comparable {}
-extension URL: @retroactive Pathish {
-  public var string: String {
-    url.absoluteString
   }
 }
 
