@@ -258,79 +258,44 @@ public class AppUpdater: ObservableObject {
       aulog("Error: Invalid downloaded bundle - executable not found")
       throw Error.invalidDownloadedBundle
     }
-    let finalExecutable = installedAppBundle.path/exe.relative(to: downloadedAppBundle.path)
     
-    // 创建临时备份目录
-    let backupDir = try FileManager.default.url(for: .itemReplacementDirectory,
-                                              in: .userDomainMask,
-                                              appropriateFor: installedAppBundle.bundleURL,
-                                              create: true)
-    let backupPath = backupDir.appendingPathComponent("\(installedAppBundle.bundleIdentifier ?? "app")-backup.app")
+    // 创建一个独立的更新器应用程序路径
+    let updaterScript = """
+    #!/bin/bash
+    sleep 2
+    rm -rf "\(installedAppBundle.bundleURL.path)"
+    cp -R "\(downloadedAppBundle.bundleURL.path)" "\(installedAppBundle.bundleURL.path)"
+    open "\(installedAppBundle.bundleURL.path)"
+    """
+    
+    let tempDir = try FileManager.default.url(for: .itemReplacementDirectory,
+                                            in: .userDomainMask,
+                                            appropriateFor: installedAppBundle.bundleURL,
+                                            create: true)
+    let updaterPath = tempDir.appendingPathComponent("updater.sh")
     
     do {
-      aulog("Creating backup at:", backupPath)
-      // 备份当前应用
-      if installedAppBundle.path.exists {
-        try FileManager.default.copyItem(
-          at: installedAppBundle.bundleURL,
-          to: backupPath
-        )
-        aulog("Backup created successfully")
+      // 写入更新脚本
+      try updaterScript.write(to: updaterPath, atomically: true, encoding: .utf8)
+      try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: updaterPath.path)
+      
+      aulog("Created updater script at:", updaterPath)
+      
+      // 启动更新脚本
+      let task = Process()
+      task.executableURL = URL(fileURLWithPath: "/bin/bash")
+      task.arguments = [updaterPath.path]
+      try task.run()
+      
+      aulog("Launched updater script, terminating current application")
+      
+      // 退出当前应用
+      DispatchQueue.main.async {
+        NSApp.terminate(nil)
       }
-      
-      aulog("Replacing application...")
-      // 删除旧应用并移动新应用
-      try? FileManager.default.removeItem(at: installedAppBundle.bundleURL)
-      try FileManager.default.moveItem(
-        at: downloadedAppBundle.bundleURL,
-        to: installedAppBundle.bundleURL
-      )
-      aulog("Application replaced successfully")
-      
-      // 验证新应用是否完整
-      guard Bundle(url: installedAppBundle.bundleURL) != nil else {
-        throw Error.invalidDownloadedBundle
-      }
-      
-      aulog("Attempting to restart application using AppleScript")
-      let script = """
-            tell application "\(installedAppBundle.bundleIdentifier ?? "")"
-                quit
-                delay 1
-                activate
-            end tell
-            """
-      
-      let appleScript = NSAppleScript(source: script)
-      var error: NSDictionary?
-      appleScript?.executeAndReturnError(&error)
-      
-      if error != nil {
-        aulog("Warning: AppleScript failed, falling back to direct launch")
-        // 如果 AppleScript 失败，回退到直接启动
-        let proc = Process()
-        if #available(OSX 10.13, *) {
-          proc.executableURL = finalExecutable.url
-        } else {
-          proc.launchPath = finalExecutable.string
-        }
-        proc.launch()
-        NSApp.terminate(self)
-      }
-      
-      aulog("Cleaning up backup")
-      try? FileManager.default.removeItem(at: backupPath)
       
     } catch {
-      aulog("Error during installation:", error)
-      // 发生错误时恢复备份
-      if FileManager.default.fileExists(atPath: backupPath.path) {
-        try? FileManager.default.removeItem(at: installedAppBundle.bundleURL)
-        try? FileManager.default.moveItem(
-          at: backupPath,
-          to: installedAppBundle.bundleURL
-        )
-      }
+      aulog("Error during installation setup:", error)
       throw error
     }
   }
